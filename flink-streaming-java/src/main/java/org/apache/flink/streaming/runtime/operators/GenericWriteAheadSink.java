@@ -29,6 +29,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTaskState;
+import org.apache.flink.util.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,8 @@ import java.util.UUID;
  * @param <IN> Type of the elements emitted by this sink
  */
 public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<IN> implements OneInputStreamOperator<IN, IN> {
+	private static final long serialVersionUID = 1L;
+
 	protected static final Logger LOG = LoggerFactory.getLogger(GenericWriteAheadSink.class);
 	private final CheckpointCommitter committer;
 	private transient AbstractStateBackend.CheckpointStateOutputView out;
@@ -107,8 +110,8 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 	}
 
 	@Override
-	public void restoreState(StreamTaskState state, long recoveryTimestamp) throws Exception {
-		super.restoreState(state, recoveryTimestamp);
+	public void restoreState(StreamTaskState state) throws Exception {
+		super.restoreState(state);
 		this.state = (ExactlyOnceState) state.getFunctionState();
 		out = null;
 	}
@@ -137,13 +140,22 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 			Set<Long> checkpointsToRemove = new HashSet<>();
 			for (Long pastCheckpointId : pastCheckpointIds) {
 				if (pastCheckpointId <= checkpointId) {
-					if (!committer.isCheckpointCommitted(pastCheckpointId)) {
-						Tuple2<Long, StateHandle<DataInputView>> handle = state.pendingHandles.get(pastCheckpointId);
-						DataInputView in = handle.f1.getState(getUserCodeClassloader());
-						sendValues(new ReusingMutableToRegularIteratorWrapper<>(new InputViewIterator<>(in, serializer), serializer), handle.f0);
-						committer.commitCheckpoint(pastCheckpointId);
+					try {
+						if (!committer.isCheckpointCommitted(pastCheckpointId)) {
+							Tuple2<Long, StateHandle<DataInputView>> handle = state.pendingHandles.get(pastCheckpointId);
+							DataInputView in = handle.f1.getState(getUserCodeClassloader());
+							boolean success = sendValues(new ReusingMutableToRegularIteratorWrapper<>(new InputViewIterator<>(in, serializer), serializer), handle.f0);
+							if (success) { //if the sending has failed we will retry on the next notify
+								committer.commitCheckpoint(pastCheckpointId);
+								checkpointsToRemove.add(pastCheckpointId);
+							}
+						} else {
+							checkpointsToRemove.add(pastCheckpointId);
+						}
+					} catch (Exception e) {
+						LOG.error("Could not commit checkpoint.", e);
+						break; // we have to break here to prevent a new checkpoint from being committed before this one
 					}
-					checkpointsToRemove.add(pastCheckpointId);
 				}
 			}
 			for (Long toRemove : checkpointsToRemove) {
@@ -159,10 +171,10 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 	 * Write the given element into the backend.
 	 *
 	 * @param value value to be written
+	 * @return true, if the sending was successful, false otherwise
 	 * @throws Exception
 	 */
-
-	protected abstract void sendValues(Iterable<IN> value, long timestamp) throws Exception;
+	protected abstract boolean sendValues(Iterable<IN> value, long timestamp) throws Exception;
 
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
@@ -184,6 +196,9 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 	 * used since the last completed checkpoint.
 	 **/
 	public static class ExactlyOnceState implements StateHandle<Serializable> {
+
+		private static final long serialVersionUID = -3571063495273460743L;
+
 		protected TreeMap<Long, Tuple2<Long, StateHandle<DataInputView>>> pendingHandles;
 
 		public ExactlyOnceState() {
@@ -209,6 +224,30 @@ public abstract class GenericWriteAheadSink<IN> extends AbstractStreamOperator<I
 			return stateSize;
 		}
 
+		@Override
+		public void close() throws IOException {
+			Throwable exception = null;
+
+			for (Tuple2<Long, StateHandle<DataInputView>> pair : pendingHandles.values()) {
+				StateHandle<DataInputView> handle = pair.f1;
+				if (handle != null) {
+					try {
+						handle.close();
+					}
+					catch (Throwable t) {
+						if (exception != null) {
+							exception = t;
+						}
+					}
+				}
+			}
+
+			if (exception != null) {
+				ExceptionUtils.rethrowIOException(exception);
+			}
+		}
+
+		@Override
 		public String toString() {
 			return this.pendingHandles.toString();
 		}

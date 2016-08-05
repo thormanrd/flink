@@ -83,7 +83,12 @@ public class ZooKeeperUtils {
 		String root = configuration.getString(ConfigConstants.ZOOKEEPER_DIR_KEY,
 				ConfigConstants.DEFAULT_ZOOKEEPER_DIR_KEY);
 
-		LOG.info("Using '{}' as root namespace.", root);
+		String namespace = configuration.getString(ConfigConstants.ZOOKEEPER_NAMESPACE_KEY,
+				ConfigConstants.DEFAULT_ZOOKEEPER_NAMESPACE_KEY);
+
+		String rootWithNamespace = generateZookeeperPath(root, namespace);
+
+		LOG.info("Using '{}' as zookeeper namespace.", rootWithNamespace);
 
 		CuratorFramework cf = CuratorFrameworkFactory.builder()
 				.connectString(zkQuorum)
@@ -92,7 +97,7 @@ public class ZooKeeperUtils {
 				.retryPolicy(new ExponentialBackoffRetry(retryWait, maxRetryAttempts))
 				// Curator prepends a '/' manually and throws an Exception if the
 				// namespace starts with a '/'.
-				.namespace(root.startsWith("/") ? root.substring(1) : root)
+				.namespace(rootWithNamespace.startsWith("/") ? rootWithNamespace.substring(1) : rootWithNamespace)
 				.build();
 
 		cf.start();
@@ -283,6 +288,18 @@ public class ZooKeeperUtils {
 		} else {
 			return new FileSystemStateStorageHelper<T>(rootPath, prefix);
 		}
+	}
+
+	private static String generateZookeeperPath(String root, String namespace) {
+		if (!namespace.startsWith("/")) {
+			namespace = "/" + namespace;
+		}
+
+		if (namespace.endsWith("/")) {
+			namespace = namespace.substring(0, namespace.length() - 1);
+		}
+
+		return root + namespace;
 	}
 
 	/**

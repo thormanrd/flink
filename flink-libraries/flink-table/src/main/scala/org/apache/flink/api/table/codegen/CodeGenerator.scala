@@ -29,14 +29,13 @@ import org.apache.flink.api.common.typeinfo.{AtomicType, SqlTimeTypeInfo, TypeIn
 import org.apache.flink.api.common.typeutils.CompositeType
 import org.apache.flink.api.java.typeutils.{PojoTypeInfo, TupleTypeInfo}
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
-import org.apache.flink.api.table.TableConfig
+import org.apache.flink.api.table.{FlinkTypeFactory, TableConfig}
 import org.apache.flink.api.table.codegen.CodeGenUtils._
 import org.apache.flink.api.table.codegen.Indenter.toISC
 import org.apache.flink.api.table.codegen.calls.ScalarFunctions
 import org.apache.flink.api.table.codegen.calls.ScalarOperators._
 import org.apache.flink.api.table.typeutils.RowTypeInfo
 import org.apache.flink.api.table.typeutils.TypeCheckUtils.{isNumeric, isString, isTemporal}
-import org.apache.flink.api.table.typeutils.TypeConverter.sqlTypeToTypeInfo
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -523,7 +522,7 @@ class CodeGenerator(
       (input2.getOrElse(throw new CodeGenException("Invalid input access.")), input2Term)
     }
 
-    val index = if (input._1 == input1) {
+    val index = if (input._2 == input1Term) {
       inputRef.getIndex
     } else {
       inputRef.getIndex - input1.getArity
@@ -535,7 +534,7 @@ class CodeGenerator(
   override def visitFieldAccess(rexFieldAccess: RexFieldAccess): GeneratedExpression = ???
 
   override def visitLiteral(literal: RexLiteral): GeneratedExpression = {
-    val resultType = sqlTypeToTypeInfo(literal.getType.getSqlTypeName)
+    val resultType = FlinkTypeFactory.toTypeInfo(literal.getType)
     val value = literal.getValue3
     // null value with type
     if (value == null) {
@@ -635,7 +634,7 @@ class CodeGenerator(
 
   override def visitCall(call: RexCall): GeneratedExpression = {
     val operands = call.getOperands.map(_.accept(this))
-    val resultType = sqlTypeToTypeInfo(call.getType.getSqlTypeName)
+    val resultType = FlinkTypeFactory.toTypeInfo(call.getType)
 
     call.getOperator match {
       // arithmetic

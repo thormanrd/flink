@@ -109,7 +109,7 @@ public class PendingCheckpoint {
 		return discarded;
 	}
 	
-	public CompletedCheckpoint toCompletedCheckpoint() {
+	public CompletedCheckpoint finalizeCheckpoint() throws Exception {
 		synchronized (lock) {
 			if (discarded) {
 				throw new IllegalStateException("pending checkpoint is discarded");
@@ -194,21 +194,24 @@ public class PendingCheckpoint {
 	/**
 	 * Discards the pending checkpoint, releasing all held resources.
 	 */
-	public void discard(ClassLoader userClassLoader) {
+	public void discard(ClassLoader userClassLoader) throws Exception {
 		dispose(userClassLoader, true);
 	}
 
-	private void dispose(ClassLoader userClassLoader, boolean releaseState) {
+	private void dispose(ClassLoader userClassLoader, boolean releaseState) throws Exception {
 		synchronized (lock) {
 			discarded = true;
 			numAcknowledgedTasks = -1;
-			if (releaseState) {
-				for (TaskState taskState : taskStates.values()) {
-					taskState.discard(userClassLoader);
+			try {
+				if (releaseState) {
+					for (TaskState taskState : taskStates.values()) {
+						taskState.discard(userClassLoader);
+					}
 				}
+			} finally {
+				taskStates.clear();
+				notYetAcknowledgedTasks.clear();
 			}
-			taskStates.clear();
-			notYetAcknowledgedTasks.clear();
 		}
 	}
 

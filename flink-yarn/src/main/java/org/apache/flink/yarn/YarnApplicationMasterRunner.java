@@ -167,8 +167,8 @@ public class YarnApplicationMasterRunner {
 
 	/**
 	 * The main work method, must run as a privileged action.
-	 * 
-	 * @return The return code for the Java process. 
+	 *
+	 * @return The return code for the Java process.
 	 */
 	protected int runApplicationMaster() {
 		ActorSystem actorSystem = null;
@@ -418,14 +418,19 @@ public class YarnApplicationMasterRunner {
 	private static Configuration createConfiguration(String baseDirectory, Map<String, String> additional) {
 		LOG.info("Loading config from directory " + baseDirectory);
 
-		GlobalConfiguration.loadConfiguration(baseDirectory);
-		Configuration configuration = GlobalConfiguration.getConfiguration();
+		Configuration configuration = GlobalConfiguration.loadConfiguration(baseDirectory);
 
 		configuration.setString(ConfigConstants.FLINK_BASE_DIR_PATH_KEY, baseDirectory);
 
 		// add dynamic properties to JobManager configuration.
 		for (Map.Entry<String, String> property : additional.entrySet()) {
 			configuration.setString(property.getKey(), property.getValue());
+		}
+
+		// override zookeeper namespace with user cli argument (if provided)
+		String cliZKNamespace = ENV.get(YarnConfigKeys.ENV_ZOOKEEPER_NAMESPACE);
+		if (cliZKNamespace != null && !cliZKNamespace.isEmpty()) {
+			configuration.setString(ConfigConstants.ZOOKEEPER_NAMESPACE_KEY, cliZKNamespace);
 		}
 
 		// if a web monitor shall be started, set the port to random binding
@@ -439,19 +444,19 @@ public class YarnApplicationMasterRunner {
 
 		BootstrapTools.substituteDeprecatedConfigKey(configuration,
 			ConfigConstants.YARN_HEAP_CUTOFF_RATIO,
-			ConfigConstants.CONTAINERED_HEAP_CUTOFF_RATIO);
+			ConfigConstants.CONTAINERIZED_HEAP_CUTOFF_RATIO);
 
 		BootstrapTools.substituteDeprecatedConfigKey(configuration,
 			ConfigConstants.YARN_HEAP_CUTOFF_MIN,
-			ConfigConstants.CONTAINERED_HEAP_CUTOFF_MIN);
+			ConfigConstants.CONTAINERIZED_HEAP_CUTOFF_MIN);
 
 		BootstrapTools.substituteDeprecatedConfigPrefix(configuration,
 			ConfigConstants.YARN_APPLICATION_MASTER_ENV_PREFIX,
-			ConfigConstants.CONTAINERED_MASTER_ENV_PREFIX);
+			ConfigConstants.CONTAINERIZED_MASTER_ENV_PREFIX);
 
 		BootstrapTools.substituteDeprecatedConfigPrefix(configuration,
 			ConfigConstants.YARN_TASK_MANAGER_ENV_PREFIX,
-			ConfigConstants.CONTAINERED_TASK_MANAGER_ENV_PREFIX);
+			ConfigConstants.CONTAINERIZED_TASK_MANAGER_ENV_PREFIX);
 
 		return configuration;
 	}

@@ -19,11 +19,15 @@
 package org.apache.flink.runtime.executiongraph;
 
 import akka.actor.ActorSystem;
+
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Gauge;
+import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
@@ -32,10 +36,9 @@ import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.blob.BlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
-import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
-import org.apache.flink.runtime.checkpoint.SavepointCoordinator;
-import org.apache.flink.runtime.checkpoint.StateStore;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointCoordinator;
+import org.apache.flink.runtime.checkpoint.savepoint.SavepointStore;
 import org.apache.flink.runtime.checkpoint.stats.CheckpointStatsTracker;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
@@ -56,13 +59,14 @@ import org.apache.flink.runtime.util.SerializableObject;
 import org.apache.flink.runtime.util.SerializedThrowable;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.SerializedValue;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.FiniteDuration;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -102,21 +106,16 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *         about deployment of tasks and updates in the task status always use the ExecutionAttemptID to
  *         address the message receiver.</li>
  * </ul>
- * 
- * <p>The ExecutionGraph implements {@link java.io.Serializable}, because it can be archived by
- * sending it to an archive actor via an actor message. The execution graph does contain some
- * non-serializable fields. These fields are not required in the archived form and are cleared
- * in the {@link #prepareForArchiving()} method.</p>
  */
-public class ExecutionGraph implements Serializable {
-
-	private static final long serialVersionUID = 42L;
+public class ExecutionGraph {
 
 	private static final AtomicReferenceFieldUpdater<ExecutionGraph, JobStatus> STATE_UPDATER =
 			AtomicReferenceFieldUpdater.newUpdater(ExecutionGraph.class, JobStatus.class, "state");
 
 	/** The log object used for debugging. */
 	static final Logger LOG = LoggerFactory.getLogger(ExecutionGraph.class);
+
+	static final String RESTARTING_TIME_METRIC_NAME = "restartingTime";
 
 	// --------------------------------------------------------------------------------------------
 
@@ -175,7 +174,7 @@ public class ExecutionGraph implements Serializable {
 	// ------ Configuration of the Execution -------
 
 	/** The execution configuration (see {@link ExecutionConfig}) related to this specific job. */
-	private SerializedValue<ExecutionConfig> serializedExecutionConfig;
+	private final SerializedValue<ExecutionConfig> serializedExecutionConfig;
 
 	/** Flag to indicate whether the scheduler may queue tasks for execution, or needs to be able
 	 * to deploy them immediately. */
@@ -204,30 +203,25 @@ public class ExecutionGraph implements Serializable {
 	// ------ Fields that are relevant to the execution and need to be cleared before archiving  -------
 
 	/** The scheduler to use for scheduling new tasks as they are needed */
-	@SuppressWarnings("NonSerializableFieldInSerializableClass")
 	private Scheduler scheduler;
 
 	/** Strategy to use for restarts */
-	@SuppressWarnings("NonSerializableFieldInSerializableClass")
 	private RestartStrategy restartStrategy;
 
 	/** The classloader for the user code. Needed for calls into user code classes */
-	@SuppressWarnings("NonSerializableFieldInSerializableClass")
 	private ClassLoader userClassLoader;
 
 	/** The coordinator for checkpoints, if snapshot checkpoints are enabled */
-	@SuppressWarnings("NonSerializableFieldInSerializableClass")
 	private CheckpointCoordinator checkpointCoordinator;
 
 	/** The coordinator for savepoints, if snapshot checkpoints are enabled */
 	private transient SavepointCoordinator savepointCoordinator;
 
-	/** Checkpoint stats tracker seperate from the coordinator in order to be
+	/** Checkpoint stats tracker separate from the coordinator in order to be
 	 * available after archiving. */
 	private CheckpointStatsTracker checkpointStatsTracker;
 
 	/** The execution context which is used to execute futures. */
-	@SuppressWarnings("NonSerializableFieldInSerializableClass")
 	private ExecutionContext executionContext;
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
@@ -258,7 +252,8 @@ public class ExecutionGraph implements Serializable {
 			restartStrategy,
 			new ArrayList<BlobKey>(),
 			new ArrayList<URL>(),
-			ExecutionGraph.class.getClassLoader()
+			ExecutionGraph.class.getClassLoader(),
+			new UnregisteredMetricsGroup()
 		);
 	}
 
@@ -272,7 +267,8 @@ public class ExecutionGraph implements Serializable {
 			RestartStrategy restartStrategy,
 			List<BlobKey> requiredJarFiles,
 			List<URL> requiredClasspaths,
-			ClassLoader userClassLoader) {
+			ClassLoader userClassLoader,
+			MetricGroup metricGroup) {
 
 		checkNotNull(executionContext);
 		checkNotNull(jobId);
@@ -306,6 +302,8 @@ public class ExecutionGraph implements Serializable {
 		this.timeout = timeout;
 
 		this.restartStrategy = restartStrategy;
+
+		metricGroup.gauge(RESTARTING_TIME_METRIC_NAME, new RestartTimeGauge());
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -352,9 +350,9 @@ public class ExecutionGraph implements Serializable {
 			ActorSystem actorSystem,
 			UUID leaderSessionID,
 			CheckpointIDCounter checkpointIDCounter,
-			CompletedCheckpointStore completedCheckpointStore,
+			CompletedCheckpointStore checkpointStore,
 			RecoveryMode recoveryMode,
-			StateStore<CompletedCheckpoint> savepointStore,
+			SavepointStore savepointStore,
 			CheckpointStatsTracker statsTracker) throws Exception {
 
 		// simple sanity checks
@@ -387,7 +385,7 @@ public class ExecutionGraph implements Serializable {
 				tasksToCommitTo,
 				userClassLoader,
 				checkpointIDCounter,
-				completedCheckpointStore,
+				checkpointStore,
 				recoveryMode,
 				checkpointStatsTracker);
 
@@ -908,7 +906,11 @@ public class ExecutionGraph implements Serializable {
 				}
 
 				for (int i = 0; i < stateTimestamps.length; i++) {
-					stateTimestamps[i] = 0;
+					if (i != JobStatus.RESTARTING.ordinal()) {
+						// Only clear the non restarting state in order to preserve when the job was
+						// restarted. This is needed for the restarting time gauge
+						stateTimestamps[i] = 0;
+					}
 				}
 				numFinishedJobVertices = 0;
 				transitionState(JobStatus.RESTARTING, JobStatus.CREATED);
@@ -987,6 +989,7 @@ public class ExecutionGraph implements Serializable {
 		}
 
 		// clear the non-serializable fields
+		restartStrategy = null;
 		scheduler = null;
 		checkpointCoordinator = null;
 		executionContext = null;
@@ -1109,7 +1112,11 @@ public class ExecutionGraph implements Serializable {
 			CheckpointCoordinator coord = this.checkpointCoordinator;
 			this.checkpointCoordinator = null;
 			if (coord != null) {
-				coord.shutdown();
+				if (state.isGloballyTerminalState()) {
+					coord.shutdown();
+				} else {
+					coord.suspend();
+				}
 			}
 
 			// We don't clean the checkpoint stats tracker, because we want
@@ -1121,8 +1128,13 @@ public class ExecutionGraph implements Serializable {
 		try {
 			CheckpointCoordinator coord = this.savepointCoordinator;
 			this.savepointCoordinator = null;
+
 			if (coord != null) {
-				coord.shutdown();
+				if (state.isGloballyTerminalState()) {
+					coord.shutdown();
+				} else {
+					coord.suspend();
+				}
 			}
 		} catch (Exception e) {
 			LOG.error("Error while cleaning up after execution", e);
@@ -1287,6 +1299,36 @@ public class ExecutionGraph implements Serializable {
 		// see what this means for us. currently, the first FAILED state means -> FAILED
 		if (newExecutionState == ExecutionState.FAILED) {
 			fail(error);
+		}
+	}
+
+	/**
+	 * Gauge which returns the last restarting time. Restarting time is the time between
+	 * JobStatus.RESTARTING and JobStatus.RUNNING or a terminal state if JobStatus.RUNNING was not
+	 * reached. If the job has not yet reached either of these states, then the time is measured
+	 * since reaching JobStatus.RESTARTING. If it is still the initial job execution, then the
+	 * gauge will return 0.
+	 */
+	private class RestartTimeGauge implements Gauge<Long> {
+
+		@Override
+		public Long getValue() {
+			long restartingTimestamp = stateTimestamps[JobStatus.RESTARTING.ordinal()];
+
+			if (restartingTimestamp <= 0) {
+				// we haven't yet restarted our job
+				return 0L;
+			} else if (stateTimestamps[JobStatus.RUNNING.ordinal()] >= restartingTimestamp) {
+				// we have transitioned to RUNNING since the last restart
+				return stateTimestamps[JobStatus.RUNNING.ordinal()] - restartingTimestamp;
+			} else if (state.isTerminalState()) {
+				// since the last restart we've switched to a terminal state without touching
+				// the RUNNING state (e.g. failing from RESTARTING)
+				return stateTimestamps[state.ordinal()] - restartingTimestamp;
+			} else {
+				// we're still somwhere between RESTARTING and RUNNING
+				return System.currentTimeMillis() - restartingTimestamp;
+			}
 		}
 	}
 }

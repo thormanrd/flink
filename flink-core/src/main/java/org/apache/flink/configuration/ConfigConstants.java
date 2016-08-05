@@ -43,7 +43,8 @@ public final class ConfigConstants {
 
 	/**
 	 * Defines the restart strategy to be used. It can be "off", "none", "disable" to be disabled or
-	 * it can be "fixeddelay", "fixed-delay" to use the FixedDelayRestartStrategy. You can also
+	 * it can be "fixeddelay", "fixed-delay" to use the FixedDelayRestartStrategy or it can
+	 * be "failurerate", "failure-rate" to use FailureRateRestartStrategy. You can also
 	 * specify a class name which implements the RestartStrategy interface and has a static
 	 * create method which takes a Configuration object.
 	 */
@@ -57,11 +58,32 @@ public final class ConfigConstants {
 	public static final String RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS = "restart-strategy.fixed-delay.attempts";
 
 	/**
-	 * Delay between two consecutive restart attempts. It can be specified using Scala's
+	 * Delay between two consecutive restart attempts in FixedDelayRestartStrategy. It can be specified using Scala's
 	 * FiniteDuration notation: "1 min", "20 s"
 	 */
 	@PublicEvolving
 	public static final String RESTART_STRATEGY_FIXED_DELAY_DELAY = "restart-strategy.fixed-delay.delay";
+
+	/**
+	 * Maximum number of restarts in given time interval {@link #RESTART_STRATEGY_FAILURE_RATE_FAILURE_RATE_INTERVAL} before failing a job
+	 * in FailureRateRestartStrategy.
+	 */
+	@PublicEvolving
+	public static final String RESTART_STRATEGY_FAILURE_RATE_MAX_FAILURES_PER_INTERVAL = "restart-strategy.failure-rate.max-failures-per-interval";
+
+	/**
+	 * Time interval in which greater amount of failures than {@link #RESTART_STRATEGY_FAILURE_RATE_MAX_FAILURES_PER_INTERVAL} causes
+	 * job fail in FailureRateRestartStrategy. It can be specified using Scala's FiniteDuration notation: "1 min", "20 s"
+	 */
+	@PublicEvolving
+	public static final String RESTART_STRATEGY_FAILURE_RATE_FAILURE_RATE_INTERVAL = "restart-strategy.failure-rate.failure-rate-interval";
+
+	/**
+	 * Delay between two consecutive restart attempts in FailureRateRestartStrategy.
+	 * It can be specified using Scala's FiniteDuration notation: "1 min", "20 s".
+	 */
+	@PublicEvolving
+	public static final String RESTART_STRATEGY_FAILURE_RATE_DELAY = "restart-strategy.failure-rate.delay";
 
 	/**
 	 * Config parameter for the number of re-tries for failed tasks. Setting this
@@ -221,9 +243,26 @@ public final class ConfigConstants {
 	public static final String TASK_MANAGER_DEBUG_MEMORY_USAGE_LOG_INTERVAL_MS = "taskmanager.debug.memory.logIntervalMs";
 
 	/**
-	 *
+	 * Defines the maximum time it can take for the TaskManager registration. If the duration is
+	 * exceeded without a successful registration, then the TaskManager terminates.
 	 */
 	public static final String TASK_MANAGER_MAX_REGISTRATION_DURATION = "taskmanager.maxRegistrationDuration";
+
+	/**
+	 * The initial registration pause between two consecutive registration attempts. The pause
+	 * is doubled for each new registration attempt until it reaches the maximum registration pause.
+	 */
+	public static final String TASK_MANAGER_INITIAL_REGISTRATION_PAUSE = "taskmanager.initial-registration-pause";
+
+	/**
+	 * The maximum registration pause between two consecutive registration attempts.
+	 */
+	public static final String TASK_MANAGER_MAX_REGISTARTION_PAUSE = "taskmanager.max-registration-pause";
+
+	/**
+	 * The pause after a registration has been refused by the job manager before retrying to connect.
+	 */
+	public static final String TASK_MANAGER_REFUSED_REGISTRATION_PAUSE = "taskmanager.refused-registration-pause";
 
 	/**
 	 * Time interval between two successive task cancellation attempts in milliseconds.
@@ -269,29 +308,27 @@ public final class ConfigConstants {
 	 * Percentage of heap space to remove from containers (YARN / Mesos), to compensate
 	 * for other JVM memory usage.
 	 */
-	public static final String CONTAINERED_HEAP_CUTOFF_RATIO = "containered.heap-cutoff-ratio";
+	public static final String CONTAINERIZED_HEAP_CUTOFF_RATIO = "containerized.heap-cutoff-ratio";
 
 	/**
 	 * Minimum amount of heap memory to remove in containers, as a safety margin.
 	 */
-	public static final String CONTAINERED_HEAP_CUTOFF_MIN = "containered.heap-cutoff-min";
+	public static final String CONTAINERIZED_HEAP_CUTOFF_MIN = "containerized.heap-cutoff-min";
 
 	/**
 	 * Prefix for passing custom environment variables to Flink's master process.
 	 * For example for passing LD_LIBRARY_PATH as an env variable to the AppMaster, set:
-	 * yarn.application-master.env.LD_LIBRARY_PATH: "/usr/lib/native"
+	 * containerized.master.env.LD_LIBRARY_PATH: "/usr/lib/native"
 	 * in the flink-conf.yaml.
 	 */
-	public static final String CONTAINERED_MASTER_ENV_PREFIX = "containered.application-master.env.";
+	public static final String CONTAINERIZED_MASTER_ENV_PREFIX = "containerized.master.env.";
 
 	/**
-	 * Similar to the {@see CONTAINERED_MASTER_ENV_PREFIX}, this configuration prefix allows
+	 * Similar to the {@see CONTAINERIZED_MASTER_ENV_PREFIX}, this configuration prefix allows
 	 * setting custom environment variables for the workers (TaskManagers)
 	 */
-	public static final String CONTAINERED_TASK_MANAGER_ENV_PREFIX = "containered.taskmanager.env.";
+	public static final String CONTAINERIZED_TASK_MANAGER_ENV_PREFIX = "containerized.taskmanager.env.";
 
-	// --------------------------Standalone Setup -----------------------------
-	
 	
 	// ------------------------ YARN Configuration ------------------------
 
@@ -302,12 +339,14 @@ public final class ConfigConstants {
 
 	/**
 	 * Percentage of heap space to remove from containers started by YARN.
+	 * @deprecated in favor of {@code #CONTAINERIZED_HEAP_CUTOFF_RATIO}
 	 */
 	@Deprecated
 	public static final String YARN_HEAP_CUTOFF_RATIO = "yarn.heap-cutoff-ratio";
 
 	/**
 	 * Minimum amount of memory to remove from the heap space as a safety margin.
+	 * @deprecated in favor of {@code #CONTAINERIZED_HEAP_CUTOFF_MIN}
 	 */
 	@Deprecated
 	public static final String YARN_HEAP_CUTOFF_MIN = "yarn.heap-cutoff-min";
@@ -355,7 +394,7 @@ public final class ConfigConstants {
 	 * For example for passing LD_LIBRARY_PATH as an env variable to the AppMaster, set:
 	 * 	yarn.application-master.env.LD_LIBRARY_PATH: "/usr/lib/native"
 	 * in the flink-conf.yaml.
-	 * @deprecated Please use {@code CONTAINERED_MASTER_ENV_PREFIX}.
+	 * @deprecated Please use {@code CONTAINERIZED_MASTER_ENV_PREFIX}.
 	 */
 	@Deprecated
 	public static final String YARN_APPLICATION_MASTER_ENV_PREFIX = "yarn.application-master.env.";
@@ -369,7 +408,7 @@ public final class ConfigConstants {
 	/**
 	 * Similar to the {@see YARN_APPLICATION_MASTER_ENV_PREFIX}, this configuration prefix allows
 	 * setting custom environment variables.
-	 * @deprecated Please use {@code CONTAINERED_TASK_MANAGER_ENV_PREFIX}.
+	 * @deprecated Please use {@code CONTAINERIZED_TASK_MANAGER_ENV_PREFIX}.
 	 */
 	@Deprecated
 	public static final String YARN_TASK_MANAGER_ENV_PREFIX = "yarn.taskmanager.env.";
@@ -454,7 +493,13 @@ public final class ConfigConstants {
 	 * The config parameter defining the flink web directory to be used by the webmonitor.
 	 */
 	public static final String JOB_MANAGER_WEB_TMPDIR_KEY = "jobmanager.web.tmpdir";
-	
+
+	/**
+	 * The config parameter defining the directory for uploading the job jars. If not specified a dynamic directory
+	 * will be used under the directory specified by JOB_MANAGER_WEB_TMPDIR_KEY.
+	 */
+	public static final String JOB_MANAGER_WEB_UPLOAD_DIR_KEY = "jobmanager.web.upload.dir";
+
 	/**
 	 * The config parameter defining the number of archived jobs for the jobmanager
 	 */
@@ -604,6 +649,8 @@ public final class ConfigConstants {
 	/** ZooKeeper root path. */
 	public static final String ZOOKEEPER_DIR_KEY = "recovery.zookeeper.path.root";
 
+	public static final String ZOOKEEPER_NAMESPACE_KEY = "recovery.zookeeper.path.namespace";
+
 	public static final String ZOOKEEPER_LATCH_PATH = "recovery.zookeeper.path.latch";
 
 	public static final String ZOOKEEPER_LEADER_PATH = "recovery.zookeeper.path.leader";
@@ -624,6 +671,58 @@ public final class ConfigConstants {
 	public static final String ZOOKEEPER_RETRY_WAIT = "recovery.zookeeper.client.retry-wait";
 
 	public static final String ZOOKEEPER_MAX_RETRY_ATTEMPTS = "recovery.zookeeper.client.max-retry-attempts";
+
+	// ---------------------------- Metrics -----------------------------------
+
+	/**
+	 * The list of named reporters. Names are defined here and per-reporter configs
+	 * are given with the reporter config prefix and the reporter name.
+	 *
+	 * Example:
+	 * <pre>{@code
+	 * metrics.reporters = foo, bar
+	 *
+	 * metrics.reporter.foo.class = org.apache.flink.metrics.reporter.JMXReporter
+	 * metrics.reporter.foo.interval = 10
+	 *
+	 * metrics.reporter.bar.class = org.apache.flink.metrics.graphite.GraphiteReporter
+	 * metrics.reporter.bar.port = 1337
+	 * }</pre>
+	 */
+	public static final String METRICS_REPORTERS_LIST = "metrics.reporters";
+
+	/**
+	 * The prefix for per-reporter configs. Has to be combined with a reporter name and
+	 * the configs mentioned below.
+	 */
+	public static final String METRICS_REPORTER_PREFIX = "metrics.reporter.";
+
+	/** The class of the reporter to use. This is used as a suffix in an actual reporter config */
+	public static final String METRICS_REPORTER_CLASS_SUFFIX = "class";
+	
+	/** The interval between reports. This is used as a suffix in an actual reporter config */
+	public static final String METRICS_REPORTER_INTERVAL_SUFFIX = "interval";
+
+	/** The delimiter used to assemble the metric identifier. */
+	public static final String METRICS_SCOPE_DELIMITER = "metrics.scope.delimiter";
+
+	/** The scope format string that is applied to all metrics scoped to a JobManager. */
+	public static final String METRICS_SCOPE_NAMING_JM = "metrics.scope.jm";
+
+	/** The scope format string that is applied to all metrics scoped to a TaskManager. */
+	public static final String METRICS_SCOPE_NAMING_TM = "metrics.scope.tm";
+
+	/** The scope format string that is applied to all metrics scoped to a job on a JobManager. */
+	public static final String METRICS_SCOPE_NAMING_JM_JOB = "metrics.scope.jm.job";
+
+	/** The scope format string that is applied to all metrics scoped to a job on a TaskManager. */
+	public static final String METRICS_SCOPE_NAMING_TM_JOB = "metrics.scope.tm.job";
+
+	/** The scope format string that is applied to all metrics scoped to a task. */
+	public static final String METRICS_SCOPE_NAMING_TASK = "metrics.scope.task";
+
+	/** The scope format string that is applied to all metrics scoped to an operator. */
+	public static final String METRICS_SCOPE_NAMING_OPERATOR = "metrics.scope.operator";
 
 	// ------------------------------------------------------------------------
 	//                            Default Values
@@ -730,6 +829,21 @@ public final class ConfigConstants {
 	 * The default task manager's maximum registration duration
 	 */
 	public static final String DEFAULT_TASK_MANAGER_MAX_REGISTRATION_DURATION = "Inf";
+
+	/**
+	 * The default task manager's initial registration pause.
+	 */
+	public static final String DEFAULT_TASK_MANAGER_INITIAL_REGISTRATION_PAUSE = "500 ms";
+
+	/**
+	 * The default task manager's maximum registration pause.
+	 */
+	public static final String DEFAULT_TASK_MANAGER_MAX_REGISTRATION_PAUSE = "30 s";
+
+	/**
+	 * The default task manager's refused registration pause.
+	 */
+	public static final String DEFAULT_TASK_MANAGER_REFUSED_REGISTRATION_PAUSE = "10 s";
 
 	/**
 	 * The default setting for TaskManager memory eager allocation of managed memory
@@ -914,6 +1028,8 @@ public final class ConfigConstants {
 	// --------------------------- ZooKeeper ----------------------------------
 
 	public static final String DEFAULT_ZOOKEEPER_DIR_KEY = "/flink";
+
+	public static final String DEFAULT_ZOOKEEPER_NAMESPACE_KEY = "/default";
 
 	public static final String DEFAULT_ZOOKEEPER_LATCH_PATH = "/leaderlatch";
 

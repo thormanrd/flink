@@ -232,8 +232,7 @@ The Apache Flink project bundles the following files under the MIT License:
  - lodash v3.10.1 (http://dojofoundation.org) - Copyright 2012-2015 The Dojo Foundation
  - moment.js v2.10.6 (http://momentjs.com/docs/) - Copyright (c) 2011-2014 Tim Wood, Iskren Chernev, Moment.js contributors
  - moment-duration-format v1.3.0 (https://github.com/jsmreese/moment-duration-format) - Copyright (c) 2013 John Madhavan-Reese
- - qtip2 v2.2.1 (http://qtip2.com) - Copyright (c) 2012 Craig Michael Thompson
- - AnchorJS (https://github.com/bryanbraun/anchorjs) - Copyright (c) 2013 Craig Michael Thompson
+ - qTip2 v2.2.1 (http://qtip2.com) - Copyright (c) 2012 Craig Michael Thompson
 
 All rights reserved.
 
@@ -306,9 +305,11 @@ Open Font License (OFT) - http://scripts.sil.org/OFL
 -----------------------------------------------------------------------
  The ISC License
 -----------------------------------------------------------------------
- 
- The Apache Flink project contains code under the ISC license from the following files:
-  - simplejmx (http://256.com/sources/simplejmx/) Copyright (c) - Gray Watson
+
+The Apache Flink project contains or reuses code that is licensed under the ISC license
+from the following projects:
+
+  - simplejmx (http://256stuff.com/sources/simplejmx/) Copyright (c) - Gray Watson
 
 Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby
 granted, provided that this permission notice appear in all copies.

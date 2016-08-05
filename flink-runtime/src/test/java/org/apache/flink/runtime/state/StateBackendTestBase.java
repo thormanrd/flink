@@ -53,6 +53,7 @@ import static org.junit.Assert.*;
 /**
  * Generic tests for the partitioned state part of {@link AbstractStateBackend}.
  */
+@SuppressWarnings("serial")
 public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 	protected B backend;
@@ -129,7 +130,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 		backend.dispose();
 		backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
 
-		backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+		backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 		for (String key: snapshot1.keySet()) {
 			snapshot1.get(key).discardState();
@@ -145,7 +146,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 		backend.dispose();
 		backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
 
-		backend.injectKeyValueStateSnapshots((HashMap) snapshot2, 100);
+		backend.injectKeyValueStateSnapshots((HashMap) snapshot2);
 
 		for (String key: snapshot2.keySet()) {
 			snapshot2.get(key).discardState();
@@ -221,7 +222,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 		backend.dispose();
 		backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
 
-		backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+		backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 		for (String key: snapshot1.keySet()) {
 			snapshot1.get(key).discardState();
@@ -242,10 +243,10 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 			Joiner joiner = Joiner.on(",");
 			// some modifications to the state
 			backend.setCurrentKey(1);
-			assertEquals("", joiner.join(state.get()));
+			assertEquals(null, state.get());
 			state.add("1");
 			backend.setCurrentKey(2);
-			assertEquals("", joiner.join(state.get()));
+			assertEquals(null, state.get());
 			state.add("2");
 			backend.setCurrentKey(1);
 			assertEquals("1", joiner.join(state.get()));
@@ -288,7 +289,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();
@@ -305,7 +306,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the second snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot2, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot2);
 
 			for (String key: snapshot2.keySet()) {
 				snapshot2.get(key).discardState();
@@ -383,7 +384,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();
@@ -400,7 +401,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the second snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot2, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot2);
 
 			for (String key: snapshot2.keySet()) {
 				snapshot2.get(key).discardState();
@@ -437,10 +438,10 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// some modifications to the state
 			backend.setCurrentKey(1);
-			assertEquals("Fold-Initial:", state.get());
+			assertEquals(null, state.get());
 			state.add(1);
 			backend.setCurrentKey(2);
-			assertEquals("Fold-Initial:", state.get());
+			assertEquals(null, state.get());
 			state.add(2);
 			backend.setCurrentKey(1);
 			assertEquals("Fold-Initial:,1", state.get());
@@ -484,7 +485,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();
@@ -501,7 +502,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the second snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot2, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot2);
 
 			for (String key: snapshot2.keySet()) {
 				snapshot2.get(key).discardState();
@@ -553,7 +554,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();
@@ -612,7 +613,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();
@@ -674,7 +675,7 @@ public abstract class StateBackendTestBase<B extends AbstractStateBackend> {
 
 			// restore the first snapshot and validate it
 			backend.initializeForJob(new DummyEnvironment("test", 1, 0), "test_op", IntSerializer.INSTANCE);
-			backend.injectKeyValueStateSnapshots((HashMap) snapshot1, 100);
+			backend.injectKeyValueStateSnapshots((HashMap) snapshot1);
 
 			for (String key: snapshot1.keySet()) {
 				snapshot1.get(key).discardState();

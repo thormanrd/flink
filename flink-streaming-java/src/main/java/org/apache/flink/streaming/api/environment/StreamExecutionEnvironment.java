@@ -913,7 +913,8 @@ public abstract class StreamExecutionEnvironment {
 	 * @return The data stream that represents the data read from the given file as text lines
 	 */
 	public DataStreamSource<String> readTextFile(String filePath, String charsetName) {
-		Preconditions.checkNotNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path must not be null.");
+		Preconditions.checkNotNull(filePath.isEmpty(), "The file path must not be empty.");
 
 		TextInputFormat format = new TextInputFormat(new Path(filePath));
 		TypeInformation<String> typeInfo = BasicTypeInfo.STRING_TYPE_INFO;
@@ -1076,6 +1077,7 @@ public abstract class StreamExecutionEnvironment {
 
 		Preconditions.checkNotNull(inputFormat, "InputFormat must not be null.");
 		Preconditions.checkNotNull(filePath, "The file path must not be null.");
+		Preconditions.checkNotNull(filePath.isEmpty(), "The file path must not be empty.");
 
 		inputFormat.setFilePath(filePath);
 		return createFileInput(inputFormat, typeInformation, "Custom File Source", watchType, filter, interval);
@@ -1103,10 +1105,37 @@ public abstract class StreamExecutionEnvironment {
 	 * 		a	negative value ensures retrying forever.
 	 * @return A data stream containing the strings received from the socket
 	 */
-	@PublicEvolving
+	@Deprecated
 	public DataStreamSource<String> socketTextStream(String hostname, int port, char delimiter, long maxRetry) {
+		return socketTextStream(hostname, port, String.valueOf(delimiter), maxRetry);
+	}
+
+	/**
+	 * Creates a new data stream that contains the strings received infinitely from a socket. Received strings are
+	 * decoded by the system's default character set. On the termination of the socket server connection retries can be
+	 * initiated.
+	 * <p>
+	 * Let us note that the socket itself does not report on abort and as a consequence retries are only initiated when
+	 * the socket was gracefully terminated.
+	 *
+	 * @param hostname
+	 * 		The host name which a server socket binds
+	 * @param port
+	 * 		The port number which a server socket binds. A port number of 0 means that the port number is automatically
+	 * 		allocated.
+	 * @param delimiter
+	 * 		A string which splits received strings into records
+	 * @param maxRetry
+	 * 		The maximal retry interval in seconds while the program waits for a socket that is temporarily down.
+	 * 		Reconnection is initiated every second. A number of 0 means that the reader is immediately terminated,
+	 * 		while
+	 * 		a	negative value ensures retrying forever.
+	 * @return A data stream containing the strings received from the socket
+	 */
+	@PublicEvolving
+	public DataStreamSource<String> socketTextStream(String hostname, int port, String delimiter, long maxRetry) {
 		return addSource(new SocketTextStreamFunction(hostname, port, delimiter, maxRetry),
-				"Socket Stream");
+			"Socket Stream");
 	}
 
 	/**
@@ -1122,14 +1151,32 @@ public abstract class StreamExecutionEnvironment {
 	 * 		A character which splits received strings into records
 	 * @return A data stream containing the strings received from the socket
 	 */
-	@PublicEvolving
+	@Deprecated
 	public DataStreamSource<String> socketTextStream(String hostname, int port, char delimiter) {
 		return socketTextStream(hostname, port, delimiter, 0);
 	}
 
 	/**
 	 * Creates a new data stream that contains the strings received infinitely from a socket. Received strings are
-	 * decoded by the system's default character set, using'\n' as delimiter. The reader is terminated immediately when
+	 * decoded by the system's default character set. The reader is terminated immediately when the socket is down.
+	 *
+	 * @param hostname
+	 * 		The host name which a server socket binds
+	 * @param port
+	 * 		The port number which a server socket binds. A port number of 0 means that the port number is automatically
+	 * 		allocated.
+	 * @param delimiter
+	 * 		A string which splits received strings into records
+	 * @return A data stream containing the strings received from the socket
+	 */
+	@PublicEvolving
+	public DataStreamSource<String> socketTextStream(String hostname, int port, String delimiter) {
+		return socketTextStream(hostname, port, delimiter, 0);
+	}
+
+	/**
+	 * Creates a new data stream that contains the strings received infinitely from a socket. Received strings are
+	 * decoded by the system's default character set, using"\n" as delimiter. The reader is terminated immediately when
 	 * the socket is down.
 	 *
 	 * @param hostname
@@ -1141,7 +1188,7 @@ public abstract class StreamExecutionEnvironment {
 	 */
 	@PublicEvolving
 	public DataStreamSource<String> socketTextStream(String hostname, int port) {
-		return socketTextStream(hostname, port, '\n');
+		return socketTextStream(hostname, port, "\n");
 	}
 
 	/**
@@ -1222,23 +1269,24 @@ public abstract class StreamExecutionEnvironment {
 	private <OUT> DataStreamSource<OUT> createFileInput(FileInputFormat<OUT> inputFormat,
 														TypeInformation<OUT> typeInfo,
 														String sourceName,
-														FileProcessingMode watchType,
+														FileProcessingMode monitoringMode,
 														FilePathFilter pathFilter,
 														long interval) {
 
 		Preconditions.checkNotNull(inputFormat, "Unspecified file input format.");
 		Preconditions.checkNotNull(typeInfo, "Unspecified output type information.");
 		Preconditions.checkNotNull(sourceName, "Unspecified name for the source.");
-		Preconditions.checkNotNull(watchType, "Unspecified watchtype.");
+		Preconditions.checkNotNull(monitoringMode, "Unspecified monitoring mode.");
 		Preconditions.checkNotNull(pathFilter, "Unspecified path name filtering function.");
 
-		Preconditions.checkArgument(watchType.equals(FileProcessingMode.PROCESS_ONCE) ||
+		Preconditions.checkArgument(monitoringMode.equals(FileProcessingMode.PROCESS_ONCE) ||
 			interval >= ContinuousFileMonitoringFunction.MIN_MONITORING_INTERVAL,
-			"The path monitoring interval cannot be less than 100 ms.");
+			"The path monitoring interval cannot be less than " +
+				ContinuousFileMonitoringFunction.MIN_MONITORING_INTERVAL + " ms.");
 
 		ContinuousFileMonitoringFunction<OUT> monitoringFunction = new ContinuousFileMonitoringFunction<>(
 			inputFormat, inputFormat.getFilePath().toString(),
-			pathFilter, watchType, getParallelism(), interval);
+			pathFilter, monitoringMode, getParallelism(), interval);
 
 		ContinuousFileReaderOperator<OUT, ?> reader = new ContinuousFileReaderOperator<>(inputFormat);
 
